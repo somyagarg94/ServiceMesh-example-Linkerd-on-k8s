@@ -1,0 +1,64 @@
+apiVersion: extensions/v1beta1
+kind: DaemonSet
+metadata:
+  labels:
+    app: linkerd
+    chart: "{{ .Chart.Name }}-{{ .Chart.Version }}"
+    heritage: "{{ .Release.Service }}"
+    release: "{{ .Release.Name }}"
+  name: linkerd
+spec:
+  template:
+    metadata:
+      annotations:
+      {{- range $key, $value := .Values.linkerd.annotations }}
+        {{ $key }}: {{ $value }}
+      {{- end }}
+      labels:
+        app: linkerd
+        release: "{{ .Release.Name }}"
+    spec:
+      volumes:
+      - name: linkerd-config
+        configMap:
+          name: "linkerd-config"
+      containers:
+      - name: {{ .Values.linkerd.name }}
+        image: {{ .Values.linkerd.image }}
+        env:
+        - name: POD_IP
+          valueFrom:
+            fieldRef:
+              fieldPath: status.podIP
+        args:
+        - /io.buoyant/linkerd/config/config.yaml
+        ports:
+        - name: incoming
+          containerPort: 4141
+          hostPort: 4141
+        - name: outgoing
+          containerPort: 4140
+          hostPort: 4140
+        - name: admin
+          containerPort: 80
+          hostPort: 80
+        resources:
+{{ toYaml .Values.linkerd.resources | indent 10 }}
+        livenessProbe:
+          httpGet:
+            path: /admin
+            port: 80
+          initialDelaySeconds: 10
+          periodSeconds: 5
+        volumeMounts:
+        - name: "linkerd-config"
+          mountPath: "/io.buoyant/linkerd/config"
+          readOnly: true
+      - name: kubectl
+        image: {{ .Values.kubectl.image }}
+        args:
+        - "proxy"
+        - "-p"
+        - "8001"
+        resources:
+{{ toYaml .Values.kubectl.resources | indent 10 }}
